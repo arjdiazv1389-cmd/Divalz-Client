@@ -452,6 +452,111 @@
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(4px); }
         }
+
+        /* --- PANTALLA DE ALERTA NO INTERNET (ESTILO BOMBER DOCK) --- */
+        .offline-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100000; /* Siempre encima de todo */
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+            padding: 20px;
+        }
+
+        .offline-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .offline-card {
+            background: #ffffff;
+            border: 4px solid var(--bomber-frame);
+            border-radius: 20px;
+            padding: 30px 20px;
+            width: 100%;
+            max-width: 380px;
+            text-align: center;
+            box-shadow: 8px 8px 0px 0px var(--bomber-frame);
+            transform: translateY(20px);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .offline-overlay.active .offline-card {
+            transform: translateY(0);
+        }
+
+        .offline-icon {
+            width: 70px;
+            height: 70px;
+            background: var(--bomber-orange);
+            color: white;
+            border: 3.5px solid var(--bomber-frame);
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin-bottom: 20px;
+            box-shadow: 3px 3px 0px 0px var(--bomber-frame);
+            animation: warningPulse 2s infinite ease-in-out;
+        }
+
+        @keyframes warningPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); background-color: #ff4a3a; }
+        }
+
+        .offline-card h2 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: -0.01em;
+            margin-bottom: 10px;
+        }
+
+        .offline-card p {
+            font-size: 0.85rem;
+            font-weight: 600;
+            line-height: 1.4;
+            opacity: 0.8;
+            margin-bottom: 20px;
+        }
+
+        .offline-loader-bar {
+            width: 80px;
+            height: 6px;
+            background: #e2e8f0;
+            border: 2px solid var(--bomber-frame);
+            border-radius: 10px;
+            margin: 0 auto;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .offline-loader-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -50%;
+            width: 50%;
+            height: 100%;
+            background: var(--bomber-lime);
+            animation: scanningLoader 1.5s infinite linear;
+        }
+
+        @keyframes scanningLoader {
+            0% { left: -50%; }
+            100% { left: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -469,8 +574,7 @@
                 <i class="fa-solid fa-images"></i> Últimos 10 Proyectos
             </h2>
             
-            <div id="projectsSlider" class="projects-slider">
-                </div>
+            <div id="projectsSlider" class="projects-slider"></div>
 
             <div class="scroll-hint">
                 Desliza para ver más <i class="fa-solid fa-arrow-right"></i>
@@ -497,7 +601,6 @@
 
     <div id="lightboxOverlay" class="lightbox-overlay">
         <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
-        
         <div id="lightboxContainer" class="lightbox-container">
             <img id="lightboxImg" class="lightbox-img" src="" alt="Vista previa">
             <div class="lightbox-caption">
@@ -505,14 +608,24 @@
                 <span id="lightboxTag" class="project-tag">Categoría</span>
             </div>
         </div>
-        
         <div class="swipe-instruction">
             <i class="fa-solid fa-arrow-down"></i> Desliza hacia abajo para salir
         </div>
     </div>
 
+    <div id="offlineOverlay" class="offline-overlay">
+        <div class="offline-card">
+            <div class="offline-icon">
+                <i class="fa-solid fa-wifi"></i>
+            </div>
+            <h2>¡Sin Conexión!</h2>
+            <p>Necesitas conectarte a internet para seguir explorando el Divalz Client de forma correcta.</p>
+            <div class="offline-loader-bar"></div>
+        </div>
+    </div>
+
     <script>
-        // Data oficial con tus 10 imágenes reales subidas por ti
+        // Data oficial
         const DATA_PROYECTOS = [
             { titulo: "Proyecto Educativo 1", categoria: "Maqueta Escolar", fecha: "Hoy", foto: "https://i.supaimg.com/fb13d9ad-2e6f-4b43-b396-a33f4261b86b/65bed10a-1b47-44f9-97a2-0119c03780c9.png" },
             { titulo: "Proyecto Educativo 2", categoria: "Material Didáctico", fecha: "Ayer", foto: "https://i.supaimg.com/fb13d9ad-2e6f-4b43-b396-a33f4261b86b/8fa88f71-c663-422b-ab9e-2852950464c3.png" },
@@ -526,8 +639,10 @@
             { titulo: "Proyecto Educativo 10", categoria: "Maqueta Escolar", fecha: "Hace 1 mes", foto: "https://i.supaimg.com/fb13d9ad-2e6f-4b43-b396-a33f4261b86b/643c07af-750d-4dfd-8457-75c59815f53c.jpg" }
         ];
 
-        // Renderizado inicial del álbum horizontal
         function inicializarApp() {
+            // Verificar estado de red inmediatamente al cargar
+            evaluarEstadoRed();
+
             const slider = document.getElementById('projectsSlider');
             slider.innerHTML = ''; 
 
@@ -551,12 +666,34 @@
                 slider.appendChild(card);
             });
 
-            // Mostrar el aviso de TikTok real tras 1.2 segundos
-            setTimeout(mostrarAlertaTikTokReal, 1200);
+            // Mostrar el aviso de TikTok real tras 1.2 segundos si está online
+            if (navigator.onLine) {
+                setTimeout(mostrarAlertaTikTokReal, 1200);
+            }
         }
+
+        // --- SISTEMA DINÁMICO DE DETECCIÓN DE INTERNET ---
+        function evaluarEstadoRed() {
+            const offlineScreen = document.getElementById('offlineOverlay');
+            if (!navigator.onLine) {
+                // Agregar clase activa para mostrar el cartel con animación suave
+                offlineScreen.classList.add('active');
+                document.body.style.overflow = 'hidden'; // Bloquear scroll de fondo
+            } else {
+                // Quitar clase activa al recuperar la red
+                offlineScreen.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        }
+
+        // Escuchadores globales de eventos de red
+        window.addEventListener('online', evaluarEstadoRed);
+        window.addEventListener('offline', evaluarEstadoRed);
+
 
         // --- CONTROLADORES DE PANTALLA COMPLETA ---
         function openLightbox(proyecto) {
+            if (!navigator.onLine) return; // No abrir si está offline
             document.getElementById('lightboxImg').src = proyecto.foto;
             document.getElementById('lightboxTitle').innerText = proyecto.titulo;
             document.getElementById('lightboxTag').innerText = proyecto.categoria;
@@ -567,7 +704,7 @@
 
         function closeLightbox() {
             document.getElementById('lightboxOverlay').classList.remove('active');
-            document.body.style.overflow = '';
+            if (navigator.onLine) document.body.style.overflow = '';
             document.getElementById('lightboxContainer').style.transform = '';
         }
 
@@ -600,10 +737,10 @@
         }, { passive: true });
 
 
-        // --- FUNCIÓN DE ALERTA DINÁMICA CON TU LINK REAL DE TIKTOK ---
+        // --- FUNCIÓN DE ALERTA DINÁMICA ---
         function mostrarAlertaTikTokReal() {
             const zona = document.getElementById('notificationZone');
-            if (zona.children.length > 0) return;
+            if (zona.children.length > 0 || !navigator.onLine) return;
             
             const alertBox = document.createElement('div');
             alertBox.className = 'alert-box';
